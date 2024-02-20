@@ -1,26 +1,22 @@
 # -*- encoding: utf-8 -*-
-"""
-verifier.app.cli.commands.server module
-
-Verification service main command line handler.  Starts service using the provided parameters
-
-"""
 import argparse
-
+import logging
 import falcon
 from hio.core import http
-from keri.app import keeping, configing, habbing, oobiing
+from keri.app import keeping, configing, habbing, oobiing, directing
 from keri.app.cli.common import existing
-from keri.vdr import viring
-
-from verifier.core import verifying, authorizing, basing, reporting
+from keri.vdr.viring import Reger
+from keri.vdr.eventing import Tevery
+from keri.vdr.verifying import Verifier
+from verifier import endpoints
+from keri import help
 
 parser = argparse.ArgumentParser(description='Launch vLEI Verification Service')
 parser.set_defaults(handler=lambda args: launch(args),
                     transferable=True)
 parser.add_argument('-p', '--http',
                     action='store',
-                    default=7676,
+                    default='7676',
                     help="Port on which to listen for verification requests")
 parser.add_argument('-n', '--name',
                     action='store',
@@ -41,20 +37,14 @@ parser.add_argument('--config-file',
                     default="dkr",
                     help="configuration filename override")
 
+help.ogler.level = logging.INFO
+help.ogler.reopen(name="verifer", temp=True, clear=True)
 
-def launch(args):
-    """ Launch the verification service.
-
-    Parameters:
-        args (Namespace): command line namespace object containing the parsed command line arguments
-
-    Returns:
-
-    """
+def launch(args: argparse.Namespace):
     name = args.name
     base = args.base
     bran = args.bran
-    httpPort = args.http
+    httpPort = int(args.http)
 
     configFile = args.configFile
     configDir = args.configDir
@@ -78,11 +68,10 @@ def launch(args):
     else:
         hby = existing.setupHby(name=name, base=base, bran=bran)
 
-    hbyDoer = habbing.HaberyDoer(habery=hby)  # setup doer
+    hbyDoer = habbing.HaberyDoer(habery=hby)
     obl = oobiing.Oobiery(hby=hby)
 
-    reger = viring.Reger(name=hby.name, temp=hby.temp)
-    vdb = basing.VerifierBaser(name=hby.name)
+    reger = Reger(name=hby.name, temp=hby.temp)
 
     app = falcon.App(
         middleware=falcon.CORSMiddleware(
@@ -93,11 +82,27 @@ def launch(args):
     server = http.Server(port=httpPort, app=app)
     httpServerDoer = http.ServerDoer(server=server)
 
-    verifying.setup(app, hby=hby, vdb=vdb, reger=reger)
-    reportDoers = reporting.setup(app=app, hby=hby, vdb=vdb)
-    authDoers = authorizing.setup(hby, vdb=vdb, reger=reger, cf=cf)
+    tvy = Tevery(reger=reger, db=hby.db)
+    vry = Verifier(hby=hby, reger=reger)
 
-    doers = obl.doers + authDoers + reportDoers + [hbyDoer, httpServerDoer]
+    presentEnd = endpoints.PresentationCollectionResourceEndpoint(hby=hby, tvy=tvy, vry=vry, reger=reger)
+    app.add_route("/", presentEnd)
+
+    doers = obl.doers + [hbyDoer, httpServerDoer]
 
     print(f"vLEI Verification Service running and listening on: {httpPort}")
     return doers
+
+def main():
+    args = parser.parse_args()
+
+    try:
+        doers = launch(args)
+        directing.runController(doers=doers, expire=0.0)
+
+    except Exception as ex:
+        raise ex
+
+
+if __name__ == "__main__":
+    main()
